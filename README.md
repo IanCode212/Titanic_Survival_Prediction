@@ -1,6 +1,6 @@
 # Titanic Survival Prediction
 
-This is my project for DMA Lab 5, based on the Kaggle Titanic competition. The goal is to predict which passengers survived. What I found is that the features made a much bigger difference than the choice of model.
+This is my project for DMA Lab 5, based on the Kaggle Titanic competition. The goal is to predict which passengers survived. My final model scored 0.80478 on the private leaderboard. The thing that got it past 0.80 wasn't a fancier model but one extra piece of information: what happened to the rest of each passenger's family.
 
 ## Data
 
@@ -28,48 +28,50 @@ I didn't use Cabin (mostly missing), Embarked (not much signal once class is kno
 A correlation heatmap shows that the family features overlap a lot. For example, Fam_Size and Group_Size have a correlation of 0.82. I tried removing the overlapping ones and adding a Child flag. CV only went up by 0.2 points and the Kaggle score went down, so I kept the original 15 features.
 
 ### 5. Comparing models
-I used 10x5 repeated stratified cross-validation (50 fits per score), because one 5-fold split can move by about a point between runs. I also tracked the gap between train and CV accuracy to catch overfitting.
+I used 10x5 repeated stratified cross-validation (50 fits per score), because one 5-fold split can move by about a point between runs. I also tracked the gap between train and CV accuracy to catch overfitting. With the 15 features, every model I tried (linear, ridge, logistic, boosting, L1 logistic regression with interaction terms) landed between 82.9% and 83.2%. The best one scored 0.79282 on Kaggle.
 
-### 6. Family survival experiment
-Families often lived or died together. I matched families by surname and ticket, used how the other family members did as a feature, and trained one logistic regression for each sex and class group. The family rates come from the training labels, so I rebuild them inside every CV fold and never use a passenger's own label.
+### 6. Adding family survival
+Families often lived or died together. I matched families by surname and ticket, and for each passenger I worked out how the other family members in the training data did. These rates come from the training labels, so I rebuild them inside every CV fold and never use a passenger's own label. Otherwise the CV score would be too optimistic.
+
+I added the family rates to ten different models. I also tested a simple women-child group rule:
+- Men die.
+- Women survive, unless every other woman or boy in their family died.
+- Boys (title Master) die, unless every other woman or boy in their family survived.
 
 ## Results
 
-Adding one feature group at a time (10x5 CV):
-
-| Features | Logistic regression | Random forest |
-|---|---|---|
-| Sex and class | 77.3% | 77.3% |
-| + Family size | 80.0% | 80.4% |
-| + Travel group | 79.5% | 80.4% |
-| + Title | 82.9% | 83.2% |
-
-Different models on the same 15 features (10x5 CV):
+Models with family survival rates (10x5 CV):
 
 | Model | CV accuracy |
 |---|---|
-| Per-group logistic regression + family survival rates | 83.6% |
-| L1 logistic regression with interaction terms (submitted) | 83.2% |
-| Ridge regression (0.5 cutoff) | 83.1% |
-| Linear regression (0.5 cutoff) | 83.0% |
-| Gradient boosting (depth 2) | 83.0% |
-| Logistic regression (L2) | 82.9% |
-
-The scores change by about 2.4 points from fold to fold, so these models are all very close. I submitted the L1 interaction model because it has no gap between train and CV, only keeps 21 of its 120 columns, and doesn't depend on other passengers' labels.
+| Vote: SVM + women-child rule + gradient boosting | 84.3% |
+| SVM (RBF) + family | 84.1% |
+| Women-child group rule | 83.7% |
+| Gradient boosting + family | 83.7% |
+| Logistic regression + family | 83.6% |
+| L1 interactions + family | 83.6% |
+| KNN + family | 83.3% |
+| Random forest + family | 83.3% |
+| L1 interactions, no family | 83.2% |
+| Extra trees + family | 83.2% |
 
 Kaggle scores:
 
 | Submission | Private | Public |
 |---|---|---|
 | Rule-based baseline | | 0.778 |
-| L1 interaction model, 15 features (final) | 0.79282 | 0.76047 |
-| Same model, overlapping features removed and Child added | 0.78884 | 0.75449 |
+| L1 interactions, no family | 0.79282 | 0.76047 |
+| SVM + family | 0.80079 | 0.76047 |
+| Vote: SVM + rule + gradient boosting | 0.80478 | 0.77245 |
+| Women-child group rule (final) | 0.80478 | 0.77844 |
+
+I picked the women-child group rule as the final model. It ties for the best private score, has the best public score, and it doesn't need any training.
 
 ## What I learned
 
-- Features matter more than the model. Going from one feature group to four added about 6 points, while switching between six models changed less than half a point.
-- A small CV gain can just be noise. Removing the overlapping features looked 0.2 points better in CV but scored worse on Kaggle.
-- Repeated CV helps when scores are close. A single 5-fold split moved by up to a point between runs, which is enough to pick the wrong model.
+- Features matter more than the model. Going from one feature group to four added about 6 points, while switching between models changed less than half a point.
+- The right information beats a better algorithm. The family survival rates were what pushed every model past 0.80, and a three-line rule using them did as well as the trained models.
+- A small CV gain can just be noise. The vote had the best CV but didn't beat the simple rule on Kaggle, and removing overlapping features looked better in CV but scored worse.
 - Features built from labels can leak. The family survival rates are only fair if they are rebuilt inside each fold from the training labels.
 
 ## Files
@@ -78,7 +80,10 @@ Kaggle scores:
 |---|---|
 | titanic.ipynb | The full notebook, from exploration to submission |
 | ian_prediction.csv | Rule-based baseline submission |
-| ian_final_prediction.csv | Final model submission |
+| ian_final_prediction.csv | Final submission (women-child group rule) |
+| ian_submission_vote.csv | Candidate: vote of SVM, rule and gradient boosting |
+| ian_submission_svm_family.csv | Candidate: SVM with family features |
+| ian_submission_wcg_rule.csv | Candidate: women-child group rule (same as the final) |
 | requirements.txt | Python packages |
 
 ## How to run
